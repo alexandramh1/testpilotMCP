@@ -1,0 +1,16 @@
+node_modules/
+dist/
+
+# Live Test Pilot session cookie — never share or commit this.
+.session/
+
+# Env files, in case any get added later.
+.env
+.env.local
+
+# Logs and OS/editor noise.
+*.log
+npm-debug.log*
+.DS_Store
+.vscode/
+.idea/
