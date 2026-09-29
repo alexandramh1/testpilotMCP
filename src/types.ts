@@ -1,14 +1,29 @@
-export type Priority = "HIGH" | "MEDIUM" | "LOW";
-export type TestType = "FUNCTIONAL" | "NEGATIVE" | "INTEGRATION" | "SECURITY";
-export type TestStatus = "DRAFT" | "READY" | "DEPRECATED";
-export type AutomationStatus = "NOT_AUTOMATED" | "AUTOMATED";
+export type Priority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+
+export type TestType =
+  | "FUNCTIONAL"
+  | "NEGATIVE"
+  | "EDGE_CASE"
+  | "INTEGRATION"
+  | "PERFORMANCE"
+  | "SECURITY"
+  | "USABILITY"
+  | "ACCESSIBILITY";
+
+export type TestStatus = "DRAFT" | "READY" | "DEPRECATED" | "MAINTENANCE";
+
+export type AutomationStatus =
+  | "NOT_AUTOMATED"
+  | "TO_BE_AUTOMATED"
+  | "AUTOMATED"
+  | "CANNOT_BE_AUTOMATED";
 
 export interface TestStep {
   action: string;
   stepNumber: number;
   // Legacy test cases created before this convention was enforced can be
-  // missing a per-step expected result (confirmed 2026-09-24 against the
-  // sandbox project's seed data).
+  // missing a per-step expected result (confirmed against the sandbox
+  // project's seed data, and the server schema itself makes it optional).
   expectedResult?: string | null;
 }
 
@@ -41,8 +56,8 @@ export interface TestCase {
   id: string;
   sequentialId: number;
   title: string;
-  // Legacy test cases can have these unset entirely, matching the export
-  // findings in the workflow plan (many rows had empty preconditions).
+  // Legacy test cases can have these unset entirely; the server schema
+  // itself makes both optional.
   description: string | null;
   preconditions: string | null;
   steps: TestStep[];

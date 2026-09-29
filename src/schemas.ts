@@ -2,7 +2,22 @@ import { z } from "zod";
 
 // Format rules from the Test Pilot export conventions (title, description,
 // preconditions). Enforced here so a malformed TC fails fast with a
-// structured error instead of landing silently in Test Pilot.
+// structured error instead of landing silently in Test Pilot. The API
+// itself accepts a looser shape (description/preconditions are optional,
+// steps don't require expectedResult) — this is a stricter convention layer
+// on top, deliberately.
+
+const PRIORITIES = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
+const TYPES = [
+  "FUNCTIONAL",
+  "NEGATIVE",
+  "EDGE_CASE",
+  "INTEGRATION",
+  "PERFORMANCE",
+  "SECURITY",
+  "USABILITY",
+  "ACCESSIBILITY",
+] as const;
 
 const titleSchema = z
   .string()
@@ -38,12 +53,12 @@ export const createTestCaseInputSchema = z.object({
   preconditions: preconditionsSchema,
   steps: z.array(stepInputSchema).min(1),
   expectedResult: z.string().min(1),
-  priority: z.enum(["HIGH", "MEDIUM", "LOW"]).default("MEDIUM"),
-  type: z.enum(["FUNCTIONAL", "NEGATIVE", "INTEGRATION", "SECURITY"]),
-  // NOTA: la API de Test Pilot no persiste `labels` en POST /test-cases
-  // todavía (confirmado 2026-09-24: ids válidos o inválidos se ignoran en
-  // silencio y el TC queda con labels: []). No se expone acá hasta que la
-  // API lo soporte; usar list_labels solo para consulta.
+  priority: z.enum(PRIORITIES).default("MEDIUM"),
+  type: z.enum(TYPES),
+  labels: z
+    .array(z.string())
+    .optional()
+    .describe("Nombres de labels ya existentes (ver list_labels)"),
 });
 
 export const updateTestCaseInputSchema = z.object({
@@ -54,20 +69,26 @@ export const updateTestCaseInputSchema = z.object({
   preconditions: preconditionsSchema.optional(),
   steps: z.array(stepInputSchema).min(1).optional(),
   expectedResult: z.string().min(1).optional(),
-  priority: z.enum(["HIGH", "MEDIUM", "LOW"]).optional(),
-  type: z.enum(["FUNCTIONAL", "NEGATIVE", "INTEGRATION", "SECURITY"]).optional(),
+  priority: z.enum(PRIORITIES).optional(),
+  type: z.enum(TYPES).optional(),
   status: z
     .enum(["DRAFT", "DEPRECATED"])
     .optional()
-    .describe("READY no está permitido acá: solo la QA humana promueve un TC a READY en la UI"),
+    .describe(
+      "READY y MAINTENANCE no están permitidos acá: esas transiciones las hace la QA humana en la UI"
+    ),
+  labels: z
+    .array(z.string())
+    .optional()
+    .describe("Reemplaza el set completo de labels del TC. Mandar [] los borra todos."),
 });
 
 export const searchTestCasesInputSchema = z.object({
   project: z.string().min(1),
-  query: z.string().optional().describe("Texto libre para buscar en title/description"),
+  query: z.string().optional().describe("Texto libre para buscar en el title (no busca en description)"),
   feature: z.string().optional(),
-  type: z.enum(["FUNCTIONAL", "NEGATIVE", "INTEGRATION", "SECURITY"]).optional(),
-  status: z.enum(["DRAFT", "READY", "DEPRECATED"]).optional(),
+  type: z.enum(TYPES).optional(),
+  status: z.enum(["DRAFT", "READY", "DEPRECATED", "MAINTENANCE"]).optional(),
   page: z.number().int().positive().optional(),
 });
 

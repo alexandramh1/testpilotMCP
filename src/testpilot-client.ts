@@ -119,10 +119,6 @@ export class TestPilotClient {
     return match;
   }
 
-  // Read-only for now: confirmed 2026-09-24 that POST /test-cases does not
-  // persist `labels` (valid or invalid ids are silently dropped). Kept here
-  // so list_labels can still answer "what labels exist", but nothing in
-  // create/update writes labels until the API supports it.
   async listLabels(): Promise<Label[]> {
     const org = await this.getOrganization();
     const { labels } = await apiFetch<{ labels: Label[] }>(
@@ -131,12 +127,36 @@ export class TestPilotClient {
     return labels;
   }
 
+  async resolveLabelIds(names: string[]): Promise<string[]> {
+    if (names.length === 0) return [];
+    const labels = await this.listLabels();
+    const missing: string[] = [];
+    const ids: string[] = [];
+    for (const name of names) {
+      const match = labels.find((l) => l.name.toLowerCase() === name.toLowerCase());
+      if (match) {
+        ids.push(match.id);
+      } else {
+        missing.push(name);
+      }
+    }
+    if (missing.length > 0) {
+      throw new TestPilotNotFoundError(
+        `Los labels ${missing.join(", ")} no existen todavía. Un admin de la organización los tiene que ` +
+          "crear primero (crear labels requiere rol ADMIN)."
+      );
+    }
+    return ids;
+  }
+
+  // The API's search only matches against `title` (case-insensitive
+  // contains), not description.
   async searchTestCases(
     projectId: string,
-    filters: { query?: string; featureId?: string; type?: string; status?: string; page?: number }
+    filters: { search?: string; featureId?: string; type?: string; status?: string; page?: number }
   ): Promise<TestCase[]> {
     const params = new URLSearchParams({ projectId });
-    if (filters.query) params.set("query", filters.query);
+    if (filters.search) params.set("search", filters.search);
     if (filters.featureId) params.set("featureId", filters.featureId);
     if (filters.type) params.set("type", filters.type);
     if (filters.status) params.set("status", filters.status);
@@ -160,8 +180,9 @@ export class TestPilotClient {
       preconditions: string;
       steps: Array<{ action: string; expectedResult: string }>;
       expectedResult: string;
-      priority: "HIGH" | "MEDIUM" | "LOW";
-      type: "FUNCTIONAL" | "NEGATIVE" | "INTEGRATION" | "SECURITY";
+      priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+      type: string;
+      labelIds: string[];
     }
   ): Promise<TestCase> {
     const steps: TestStep[] = payload.steps.map((s, i) => ({
@@ -186,26 +207,34 @@ export class TestPilotClient {
         status: "DRAFT",
         aiGenerated: true,
         automationStatus: "NOT_AUTOMATED",
+        ...(payload.labelIds.length > 0 && { labelIds: payload.labelIds }),
       }),
     });
   }
 
-  // The API's PUT replaces the whole test case, so an update must fetch the
-  // current TC, merge only the changed fields on top, and send the full
-  // object back — otherwise untouched fields get wiped.
+  // PUT /test-cases/{id} is validated against testCaseUpdateSchema, which
+  // is testCaseCreateSchema.partial() — but zod's .partial() only makes
+  // fields optional, it does NOT strip their .default(). `type`, `status`,
+  // and `aiGenerated` all have a .default() on the create schema, so a
+  // request that omits them gets them silently reset to that default
+  // (confirmed live: sending only `{ priority: "HIGH" }` reset an
+  // EDGE_CASE/aiGenerated:true test case to FUNCTIONAL/aiGenerated:false).
+  // The route's own comment only worked around this for automationStatus.
+  // Until that's fixed upstream, always GET the current test case first and
+  // merge the patch on top before sending the PUT.
   async updateTestCase(
     projectId: string,
     testCaseId: string,
     patch: {
-      featureId?: string;
       title?: string;
       description?: string;
       preconditions?: string;
       steps?: Array<{ action: string; expectedResult: string }>;
       expectedResult?: string;
-      priority?: "HIGH" | "MEDIUM" | "LOW";
-      type?: "FUNCTIONAL" | "NEGATIVE" | "INTEGRATION" | "SECURITY";
+      priority?: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+      type?: string;
       status?: "DRAFT" | "DEPRECATED";
+      labelIds?: string[];
     }
   ): Promise<TestCase> {
     const current = await this.getTestCase(projectId, testCaseId);
@@ -215,9 +244,19 @@ export class TestPilotClient {
       stepNumber: i + 1,
     }));
     const merged = {
-      ...current,
-      ...patch,
+      title: patch.title ?? current.title,
+      description: patch.description ?? current.description ?? undefined,
+      preconditions: patch.preconditions ?? current.preconditions ?? undefined,
       steps: steps ?? current.steps,
+      expectedResult: patch.expectedResult ?? current.expectedResult,
+      priority: patch.priority ?? current.priority,
+      type: patch.type ?? current.type,
+      status: patch.status ?? current.status,
+      aiGenerated: current.aiGenerated,
+      automationStatus: current.automationStatus,
+      ...(patch.labelIds !== undefined
+        ? { labelIds: patch.labelIds }
+        : { labelIds: current.labels.map((l) => l.id) }),
     };
     return apiFetch<TestCase>(`/test-cases/${testCaseId}?projectId=${projectId}`, {
       method: "PUT",

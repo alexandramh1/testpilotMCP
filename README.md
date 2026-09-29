@@ -75,24 +75,36 @@ npm run build
 - `description`: must start with `Covers...` or `Verifies...`
 - `preconditions`: `Role: X | State: Y | Location: Z`
 - `steps`: at least one, each with `action` and `expectedResult`
+- `priority`: `LOW` | `MEDIUM` | `HIGH` | `CRITICAL`
+- `type`: `FUNCTIONAL` | `NEGATIVE` | `EDGE_CASE` | `INTEGRATION` | `PERFORMANCE` | `SECURITY` |
+  `USABILITY` | `ACCESSIBILITY` (edge cases get their own real type — no need for a label
+  workaround)
+- `labels`: optional, by name (resolved to ids via `list_labels`); the label must already exist
 
 `status`, `aiGenerated`, and `automationStatus` are not parameters of `create_test_case`: every
 TC is always created `DRAFT` / `true` / `NOT_AUTOMATED`. `update_test_case` won't let you move a
-TC to `READY` — that promotion is done by a human QA in the Test Pilot UI.
+TC to `READY` or `MAINTENANCE` — those transitions are done by a human QA in the Test Pilot UI.
 
-## Known limitations (API, not this MCP)
+## Known limitations / confirmed API bugs (not this MCP)
 
-- **Labels can't be assigned to a test case yet.** Confirmed against the sandbox: sending
-  `labels` on `POST /test-cases` (valid or invalid ids) doesn't error, but nothing persists —
-  the TC always comes back with `labels: []`. `list_labels` is read-only until the API supports
-  writing them.
-- **Creating a new label requires the org ADMIN role.**
+- **Confirmed bug: a partial `PUT` silently resets `type` and `aiGenerated` to their schema
+  defaults.** `testCaseUpdateSchema` is `testCaseCreateSchema.partial()` in the TestPilot source,
+  but zod's `.partial()` only makes fields optional — it does not strip their `.default(...)`.
+  `type` defaults to `FUNCTIONAL` and `aiGenerated` to `false` on the create schema, so a PUT that
+  omits them gets those fields reset even though the caller never touched them. The route already
+  works around this for `automationStatus` (see its comment in
+  `src/lib/validations/test-case.ts`) but not for `type` or `aiGenerated`. `update_test_case`
+  works around it by fetching the current test case and always sending every field back.
+- **Creating a new label requires the org ADMIN role.** Labels themselves *can* be assigned on
+  create/update — the field is `labelIds` (an array of label ids), not `labels`.
 - The `/ai/generate`, `/ai/improve`, and `/ai/suggest-gaps` endpoints exist but cost money per
   call — they're intentionally not exposed as tools here, so nothing gets spent without an
   explicit decision.
 - Legacy data can have `description`/`preconditions` set to `null` or steps missing
   `expectedResult` — the read-side types account for that, but a *new* TC must always follow the
   full format.
+- `search_test_cases`' text filter only matches against `title` (case-insensitive contains), not
+  `description`.
 
 ## Structure
 
