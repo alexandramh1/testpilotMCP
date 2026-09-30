@@ -153,7 +153,14 @@ export class TestPilotClient {
   // contains), not description.
   async searchTestCases(
     projectId: string,
-    filters: { search?: string; featureId?: string; type?: string; status?: string; page?: number }
+    filters: {
+      search?: string;
+      featureId?: string;
+      type?: string;
+      status?: string;
+      page?: number;
+      limit?: number;
+    }
   ): Promise<TestCase[]> {
     const params = new URLSearchParams({ projectId });
     if (filters.search) params.set("search", filters.search);
@@ -161,14 +168,35 @@ export class TestPilotClient {
     if (filters.type) params.set("type", filters.type);
     if (filters.status) params.set("status", filters.status);
     if (filters.page) params.set("page", String(filters.page));
+    if (filters.limit) params.set("limit", String(filters.limit));
     const result = await apiFetch<{ testCases: TestCase[]; pagination: unknown }>(
       `/test-cases?${params}`
     );
     return result.testCases;
   }
 
+  // Agents and humans both refer to a test case by its visible label
+  // ("TC-952", the sequentialId), never by the internal cuid the API
+  // actually keys on. get_test_case/update_test_case take whatever the
+  // caller has on hand and resolve it themselves instead of 404ing on a
+  // perfectly valid-looking reference.
+  async resolveTestCaseId(projectId: string, idOrLabel: string): Promise<string> {
+    const match = idOrLabel.match(/^(?:TC-)?(\d+)$/i);
+    if (!match) return idOrLabel;
+    const sequentialId = Number(match[1]);
+    const testCases = await this.searchTestCases(projectId, { limit: 500 });
+    const found = testCases.find((tc) => tc.sequentialId === sequentialId);
+    if (!found) {
+      throw new TestPilotNotFoundError(
+        `No existe el test case ${idOrLabel} en este proyecto.`
+      );
+    }
+    return found.id;
+  }
+
   async getTestCase(projectId: string, testCaseId: string): Promise<TestCase> {
-    return apiFetch<TestCase>(`/test-cases/${testCaseId}?projectId=${projectId}`);
+    const id = await this.resolveTestCaseId(projectId, testCaseId);
+    return apiFetch<TestCase>(`/test-cases/${id}?projectId=${projectId}`);
   }
 
   async createTestCase(
@@ -258,7 +286,7 @@ export class TestPilotClient {
         ? { labelIds: patch.labelIds }
         : { labelIds: current.labels.map((l) => l.id) }),
     };
-    return apiFetch<TestCase>(`/test-cases/${testCaseId}?projectId=${projectId}`, {
+    return apiFetch<TestCase>(`/test-cases/${current.id}?projectId=${projectId}`, {
       method: "PUT",
       body: JSON.stringify(merged),
     });
