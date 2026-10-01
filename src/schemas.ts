@@ -100,3 +100,52 @@ export const getTestCaseInputSchema = z.object({
 export const listFeaturesInputSchema = z.object({
   project: z.string().min(1),
 });
+
+export const listSuitesInputSchema = z.object({
+  project: z.string().min(1),
+});
+
+export const createSuiteInputSchema = z.object({
+  project: z.string().min(1),
+  name: z.string().min(1),
+  description: z.string().optional(),
+  releaseTag: z.string().optional(),
+});
+
+export const setSuiteTestCasesInputSchema = z.object({
+  project: z.string().min(1),
+  suite: z.string().min(1).describe("Nombre de una suite existente (ver list_suites) o recién creada con create_suite"),
+  testCaseIds: z
+    .array(z.string().min(1))
+    .describe("IDs de test case (TC-<n> o el id interno) en el orden en que deben ejecutarse. Reemplaza el set completo."),
+});
+
+export const createTestRunInputSchema = z.object({
+  project: z.string().min(1),
+  suite: z.string().min(1),
+  name: z.string().optional(),
+  environment: z.string().optional().describe("Ej. 'staging'"),
+  buildVersion: z.string().optional(),
+});
+
+export const getTestRunInputSchema = z.object({
+  project: z.string().min(1),
+  executionId: z.string().min(1),
+});
+
+export const recordResultInputSchema = z.object({
+  project: z.string().min(1),
+  executionId: z.string().min(1),
+  testCaseId: z
+    .string()
+    .min(1)
+    .describe("TC-<n> o el id interno del test case dentro de esta ejecución (no el resultId)"),
+  result: z.enum(["PASSED", "FAILED", "BLOCKED"]),
+  defectLink: z.string().optional(),
+  comments: z.string().optional().describe("Evidencia: lo observado, con el dato citado, nunca solo 'funciona'/'no funciona'"),
+});
+
+export const completeTestRunInputSchema = z.object({
+  project: z.string().min(1),
+  executionId: z.string().min(1),
+});

@@ -1,9 +1,12 @@
 import { loadSessionCookie, TestPilotAuthError } from "./session.js";
 import type {
+  Execution,
+  ExecutionResultValue,
   Feature,
   Label,
   Organization,
   Project,
+  Suite,
   TestCase,
   TestStep,
 } from "./types.js";
@@ -289,6 +292,111 @@ export class TestPilotClient {
     return apiFetch<TestCase>(`/test-cases/${current.id}?projectId=${projectId}`, {
       method: "PUT",
       body: JSON.stringify(merged),
+    });
+  }
+
+  async listSuites(projectId: string): Promise<Suite[]> {
+    const result = await apiFetch<{ suites: Suite[]; pagination: unknown }>(
+      `/suites?projectId=${projectId}`
+    );
+    return result.suites;
+  }
+
+  async resolveSuite(projectId: string, name: string): Promise<Suite> {
+    const suites = await this.listSuites(projectId);
+    const match = suites.find((s) => s.name.toLowerCase() === name.toLowerCase());
+    if (!match) {
+      throw new TestPilotNotFoundError(
+        `No existe la suite '${name}' en este proyecto. Usá list_suites para ver las existentes, ` +
+          "o create_suite para crear una nueva."
+      );
+    }
+    return match;
+  }
+
+  async createSuite(
+    projectId: string,
+    payload: { name: string; description?: string; releaseTag?: string }
+  ): Promise<Suite> {
+    return apiFetch<Suite>(`/suites?projectId=${projectId}`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  // Replaces the suite's full test case list (order = the array order).
+  async setSuiteTestCases(
+    projectId: string,
+    suiteId: string,
+    testCaseIds: string[]
+  ): Promise<void> {
+    await apiFetch(`/suites/${suiteId}/test-cases?projectId=${projectId}`, {
+      method: "PUT",
+      body: JSON.stringify({ testCaseIds }),
+    });
+  }
+
+  // Creating an execution snapshots every test case currently in the suite
+  // into NOT_RUN results — add test cases to the suite first.
+  async createTestRun(
+    projectId: string,
+    payload: { suiteId: string; name?: string; environment?: string; buildVersion?: string }
+  ): Promise<Execution> {
+    return apiFetch<Execution>(`/executions?projectId=${projectId}`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async getTestRun(projectId: string, executionId: string): Promise<Execution> {
+    return apiFetch<Execution>(`/executions/${executionId}?projectId=${projectId}`);
+  }
+
+  // record_result identifies a test case the way a human/agent naturally
+  // would (TC-<n> or the internal id), not by the execution-result row id
+  // the API actually keys on — resolve it from the execution's own results.
+  async resolveResultId(
+    projectId: string,
+    executionId: string,
+    testCaseIdOrLabel: string
+  ): Promise<string> {
+    const testCaseId = await this.resolveTestCaseId(projectId, testCaseIdOrLabel);
+    const execution = await this.getTestRun(projectId, executionId);
+    const found = execution.results.find((r) => r.testCaseId === testCaseId);
+    if (!found) {
+      throw new TestPilotNotFoundError(
+        `El test case ${testCaseIdOrLabel} no está en la ejecución ${executionId}. ` +
+          "Agregalo a la suite con set_suite_test_cases antes de crear la ejecución."
+      );
+    }
+    return found.id;
+  }
+
+  // resultId (not testCaseId) identifies which row to update — get it from
+  // getTestRun's results[].id, matched by results[].testCaseId.
+  async recordResult(
+    projectId: string,
+    executionId: string,
+    payload: {
+      resultId: string;
+      result: ExecutionResultValue;
+      defectLink?: string;
+      comments?: string;
+    }
+  ): Promise<void> {
+    await apiFetch(`/executions/${executionId}/results?projectId=${projectId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  // Server refuses to complete an execution while any result is still
+  // NOT_RUN, so a caller can rely on this as the "did everything get run"
+  // check rather than counting results itself.
+  async completeTestRun(projectId: string, executionId: string): Promise<Execution> {
+    return apiFetch<Execution>(`/executions/${executionId}?projectId=${projectId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "COMPLETED" }),
     });
   }
 }

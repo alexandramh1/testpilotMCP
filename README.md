@@ -66,6 +66,16 @@ npm run build
 | `get_test_case` | Reads a full TC, including its steps |
 | `create_test_case` | Creates a new TC, always as `DRAFT` and `ai_generated: true` |
 | `update_test_case` | Updates fields on an existing TC (GET + merge + PUT internally) |
+| `list_suites` | Lists a project's test suites |
+| `create_suite` | Creates a new suite (a named group of test cases to run together) |
+| `set_suite_test_cases` | Replaces a suite's full test case list, in order |
+| `create_test_run` | Creates an execution for a suite; snapshots its test cases as NOT_RUN results |
+| `get_test_run` | Reads an execution and every result in it |
+| `record_result` | Records PASSED/FAILED/BLOCKED for one test case in a run, by TC-<n> or id |
+| `complete_test_run` | Marks an execution COMPLETED (fails if anything is still NOT_RUN) |
+
+All test-case and execution-result tools accept either the internal id or the visible
+`TC-<n>`/sequential-id label — both get resolved to what the API actually needs.
 
 ### Test case format
 

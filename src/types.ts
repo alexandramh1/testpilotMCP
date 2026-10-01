@@ -76,3 +76,41 @@ export interface TestCase {
   feature?: Feature;
   labels: Label[];
 }
+
+
+export type ExecutionResultValue = "NOT_RUN" | "PASSED" | "FAILED" | "BLOCKED";
+export type ExecutionStatus = "IN_PROGRESS" | "COMPLETED" | "ABORTED";
+
+export interface Suite {
+  id: string;
+  name: string;
+  description: string | null;
+  releaseTag: string | null;
+  projectId: string;
+}
+
+export interface ExecutionResult {
+  id: string;
+  executionId: string;
+  testCaseId: string;
+  testCaseName: string;
+  result: ExecutionResultValue;
+  defectLink: string | null;
+  comments: string | null;
+  assignedToId: string | null;
+}
+
+export interface Execution {
+  id: string;
+  sequentialId: number;
+  name: string | null;
+  suiteId: string;
+  suite?: { id: string; name: string };
+  environment: string | null;
+  buildVersion: string | null;
+  status: ExecutionStatus;
+  executedBy: string | null;
+  results: ExecutionResult[];
+  createdAt: string;
+  updatedAt: string;
+}
